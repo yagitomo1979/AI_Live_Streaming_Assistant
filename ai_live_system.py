@@ -9,6 +9,25 @@ import autogen
 from llama_cpp import Llama
 
 # ==========================================
+# ★追加: テキスト整形＆保存関数 (30文字改行対応)
+# ==========================================
+def write_output_text(text: str):
+    """
+    テキストをoutput.txtに保存する。
+    1行が30文字を超える場合は、30文字目で自動的に改行する。
+    """
+    lines = []
+    for line in text.splitlines():
+        while len(line) > 30:
+            lines.append(line[:30])
+            line = line[30:]
+        lines.append(line)
+        
+    formatted_text = "\n".join(lines)
+    with open("output.txt", "w", encoding="utf-8") as f:
+        f.write(formatted_text)
+
+# ==========================================
 # 0. クラス定義＆グローバル設定
 # ==========================================
 class Message:
@@ -50,7 +69,7 @@ class LocalGGUFClient:
             llm = Llama(
                 model_path=model_path,
                 n_gpu_layers=-1, 
-                n_ctx=8192,      # メモリ節約のため少し減らしています
+                n_ctx=8192,      
                 verbose=False,   
                 flash_attn=True  
             )
@@ -67,6 +86,11 @@ class LocalGGUFClient:
             max_tokens=params.get("max_tokens", 1024),
         )
         content = response["choices"][0]["message"]["content"]
+        
+        # ★追加: LLMのラリーの様子を output.txt に出力する
+        role_name = "プロデューサー" if self.model_name == "Producer" else "ライター"
+        write_output_text(f"【{role_name}の思考】\n{content}")
+        
         usage_data = response["usage"]
         return Response([Choice(Message(content))], Usage(usage_data["prompt_tokens"], usage_data["completion_tokens"], usage_data["total_tokens"]))
 
@@ -83,10 +107,11 @@ class LocalGGUFClient:
 # 2. VOICEVOX 読み上げ＆テキスト保存関数
 # ==========================================
 def speak_and_save_text(text: str, speaker_id: int = 3):
-    """テキストをoutput.txtに保存し、VOICEVOXで再生する"""
+    """最終テキストを保存し、VOICEVOXで再生する"""
     print("\n📝 最終回答を output.txt に出力します...")
-    with open("output.txt", "w", encoding="utf-8") as f:
-        f.write(text)
+    
+    # ★追加: 整形関数を使って最終回答を出力
+    write_output_text(f"【回答】\n{text}")
         
     print(f"🎙️ VOICEVOXで音声を生成・再生します...")
     try:
@@ -116,8 +141,8 @@ def process_comment_with_ai(comment_text: str):
     initial_message = f"以下の相談内容に対する回答案を作成してください。\nまずはプロデューサーから、どのような回答にすべきかの指示を出してください。\n\n【視聴者からの相談内容】\n{comment_text}"
     
     # ⚠️ ここをご自身のモデルパスに書き換えてください ⚠️
-    PRODUCER_MODEL_PATH = "your_model.gguf" # 例: Llama等
-    WRITER_MODEL_PATH = "your_mode.gguf" # 例: ELYZA
+    PRODUCER_MODEL_PATH = "your_model.gguf" 
+    WRITER_MODEL_PATH = "your_model.gguf" 
     
     config_list_producer = [{"model": "Producer", "model_client_cls": "LocalGGUFClient", "model_path": PRODUCER_MODEL_PATH}]
     config_list_writer = [{"model": "Writer", "model_client_cls": "LocalGGUFClient", "model_path": WRITER_MODEL_PATH}]
@@ -129,7 +154,7 @@ def process_comment_with_ai(comment_text: str):
         llm_config={"config_list": config_list_producer, "cache_seed": None},
         human_input_mode="NEVER",
         code_execution_config=False,
-        max_consecutive_auto_reply=2, # スピード重視で最大2ラリー
+        max_consecutive_auto_reply=2, 
         is_termination_msg=termination_msg,
         system_message="あなたはライブ配信のプロデューサーです。\n視聴者からの相談に対し、ライターへ『回答の方向性とトーン』を簡潔に指示してください。\nライターが回答案を出したら、修正指示は出さず、必ず「[MISSION_COMPLETE]」と発言して完了させてください。\n英語は使用不可。"
     )
@@ -138,16 +163,14 @@ def process_comment_with_ai(comment_text: str):
         name="Writer",
         llm_config={"config_list": config_list_writer, "cache_seed": None},
         is_termination_msg=termination_msg,
-        system_message="あなたは優秀なAIカウンセラーです。プロデューサーの指示に従い、視聴者への回答を作成します。\n【重要】ライブ配信で読み上げるため、温かい口調で、必ず「300文字以内」で簡潔に回答してください。\n英語の思考プロセスは絶対に出力しないでください。\n画面の表示の関係で、意味の切れ目に気をつけて、２８文字くらいで改行するようにして下さい。"
+        system_message="あなたは優秀なAIカウンセラーです。プロデューサーの指示に従い、視聴者への回答を作成します。\n【重要】ライブ配信で読み上げるため、温かい口調で、必ず「300文字以内」で簡潔に回答してください。\n英語の思考プロセスは絶対に出力しないでください。\n出力する文章は、一文ごとに改行を入れるようにして下さい。"
     )
 
     producer_agent.register_model_client(model_client_cls=LocalGGUFClient)
     writer_agent.register_model_client(model_client_cls=LocalGGUFClient)
 
-    # 対話の開始
     chat_result = writer_agent.initiate_chat(producer_agent, message=initial_message)
     
-    # チャット履歴から「ライター(Writer)が最後に発言した内容」を抽出
     chat_history = producer_agent.chat_messages[writer_agent]
     final_advice = "（回答を生成できませんでした）"
     
@@ -163,15 +186,14 @@ def process_comment_with_ai(comment_text: str):
 # ==========================================
 def main():
     # ⚠️ ここをテストしたいYouTubeライブの動画IDに変更してください ⚠️
-    VIDEO_ID = "YOUR_VIDEO_ID_HERE" 
+    VIDEO_ID = "_B7ltajZbgo" 
     
     print("\n" + "="*50)
     print(" 🚀 AIライブ配信システム 起動！")
     print("="*50)
     
-    # 初期化テキストをoutput.txtに書き込んでおく
-    with open("output.txt", "w", encoding="utf-8") as f:
-        f.write("コメントを待機しています...")
+    # ★追加: 初期化テキストをoutput.txtに書き込んでおく
+    write_output_text("コメントを受付中です。")
 
     try:
         chat = pytchat.create(video_id=VIDEO_ID)
@@ -180,13 +202,16 @@ def main():
         while chat.is_alive():
             items = chat.get().items
             if items:
-                # 溜まっているコメントのうち、一番最新のものだけを取得する
                 latest_comment = items[-1]
                 author = latest_comment.author.name
                 text = latest_comment.message
                 
                 print("-" * 50)
                 print(f"👤 {author} さんからの相談: {text}")
+                
+                # ★追加: コメントを受け付けたことをファイルに出力
+                write_output_text(f"コメントを受付ました。\n相談者: {author}さん")
+                time.sleep(1) # 「受付ました」の文字がOBSに表示される時間を少し確保する
                 
                 # AIに回答を作らせる
                 final_answer = process_comment_with_ai(text)
@@ -197,9 +222,12 @@ def main():
                 speak_and_save_text(final_answer)
                 
                 print("\n次のコメントを待機しています...")
+                
+                # ★追加: 次のコメント待機状態になったら受付中表示に戻す
+                write_output_text("コメントを受付中です。")
                 print("-" * 50)
                 
-            time.sleep(2) # CPU負荷軽減のための待機
+            time.sleep(2)
 
     except Exception as e:
         print(f"❌ 予期せぬエラーが発生しました: {e}")
