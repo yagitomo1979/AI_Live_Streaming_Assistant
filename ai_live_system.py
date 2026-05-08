@@ -178,7 +178,7 @@ def main():
         print(f"✅ YouTube Live [{VIDEO_ID}] に接続しました。コメントを待機します...\n")
 
         while chat.is_alive():
-            items = chat.get().sync_items()
+            items = chat.get().items
             if items:
                 # 溜まっているコメントのうち、一番最新のものだけを取得する
                 latest_comment = items[-1]
