@@ -186,7 +186,7 @@ def process_comment_with_ai(comment_text: str):
 # ==========================================
 def main():
     # ⚠️ ここをテストしたいYouTubeライブの動画IDに変更してください ⚠️
-    VIDEO_ID = "_B7ltajZbgo" 
+    VIDEO_ID = "input_your_live_ID" 
     
     print("\n" + "="*50)
     print(" 🚀 AIライブ配信システム 起動！")
