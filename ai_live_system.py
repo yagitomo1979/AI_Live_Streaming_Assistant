@@ -186,53 +186,68 @@ def process_comment_with_ai(comment_text: str):
 # ==========================================
 def main():
     # ⚠️ ここをテストしたいYouTubeライブの動画IDに変更してください ⚠️
-    VIDEO_ID = "input_your_live_ID" 
+    VIDEO_ID = "uPZeSdpLxs4" 
     
     print("\n" + "="*50)
-    print(" 🚀 AIライブ配信システム 起動！")
+    print(" 🚀 AIライブ配信システム 起動！（24時間稼働モード）")
     print("="*50)
     
-    # ★追加: 初期化テキストをoutput.txtに書き込んでおく
-    write_output_text("コメントを受付中です。")
+    write_output_text("システム起動中...")
 
-    try:
-        chat = pytchat.create(video_id=VIDEO_ID)
-        print(f"✅ YouTube Live [{VIDEO_ID}] に接続しました。コメントを待機します...\n")
+    # ★変更点1: プログラム全体を絶対に終わらせない「大外の無限ループ」
+    while True:
+        try:
+            # 接続を確立
+            chat = pytchat.create(video_id=VIDEO_ID)
+            print(f"\n✅ YouTube Live [{VIDEO_ID}] に接続しました。コメントを待機します...\n")
+            write_output_text("コメントを受付中です。")
 
-        while chat.is_alive():
-            items = chat.get().items
-            if items:
-                latest_comment = items[-1]
-                author = latest_comment.author.name
-                text = latest_comment.message
-                
-                print("-" * 50)
-                print(f"👤 {author} さんからの相談: {text}")
-                
-                # ★追加: コメントを受け付けたことをファイルに出力
-                write_output_text(f"コメントを受付ました。\n相談者: {author}さん")
-                time.sleep(1) # 「受付ました」の文字がOBSに表示される時間を少し確保する
-                
-                # AIに回答を作らせる
-                final_answer = process_comment_with_ai(text)
-                
-                print(f"\n✨ AIの回答:\n{final_answer}\n")
-                
-                # 音声合成とファイル保存
-                speak_and_save_text(final_answer)
-                
-                print("\n次のコメントを待機しています...")
-                
-                # ★追加: 次のコメント待機状態になったら受付中表示に戻す
-                write_output_text("コメントを受付中です。")
-                print("-" * 50)
-                
-            time.sleep(2)
+            while chat.is_alive():
+                # ★変更点2: 1回のコメント処理ごとにエラーをキャッチして、ループを死守する
+                try:
+                    items = chat.get().items
+                    if items:
+                        latest_comment = items[-1]
+                        author = latest_comment.author.name
+                        text = latest_comment.message
+                        
+                        print("-" * 50)
+                        print(f"👤 {author} さんからの相談: {text}")
+                        
+                        write_output_text(f"コメントを受付ました。\n相談者: {author}さん")
+                        time.sleep(1)
+                        
+                        final_answer = process_comment_with_ai(text)
+                        
+                        print(f"\n✨ AIの回答:\n{final_answer}\n")
+                        speak_and_save_text(final_answer)
+                        
+                        print("\n次のコメントを待機しています...")
+                        write_output_text("コメントを受付中です。")
+                        print("-" * 50)
+                        
+                    time.sleep(2)
+                    
+                except Exception as inner_e:
+                    # AI処理やVOICEVOXでエラーが起きても、ここでキャッチして無視（ループ継続）
+                    print(f"⚠️ コメント処理中に軽微なエラーが発生しました（スキップします）: {inner_e}")
+                    time.sleep(2)
 
-    except Exception as e:
-        print(f"❌ 予期せぬエラーが発生しました: {e}")
-    except KeyboardInterrupt:
-        print("\n⏹️ システムを安全に終了しました。")
+            # chat.is_alive() が False (通信切断) になったらここに来る
+            print("⚠️ YouTubeとのチャット接続が切れました。10秒後に再接続を試みます...")
+            write_output_text("通信待機中...")
+            time.sleep(10)
+
+        except KeyboardInterrupt:
+            # Ctrl+C (手動停止) の時だけは、本当にプログラムを終了させる
+            print("\n⏹️ 管理者によってシステムが手動停止されました。お疲れ様でした！")
+            break
+            
+        except Exception as e:
+            # ネットワークが完全に無い場合など、致命的なエラー
+            print(f"❌ 致命的な接続エラーが発生しました。15秒後に再起動します: {e}")
+            write_output_text("システム再接続中...")
+            time.sleep(15)
 
 if __name__ == "__main__":
     main()
